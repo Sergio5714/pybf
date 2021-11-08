@@ -2,13 +2,17 @@
 
 # Introduction
 
-Provided datasets `rf_dataset.hdf5` and `image_dataset.hdf5` contain **raw RF data** and **reconstructed image** required to run `plane_wave_3_test`and `make_video` tests respectively.
+Provided datasets `./rf_dataset.hdf5` and `./image_dataset.hdf5` contain **raw RF data** and **reconstructed image** required to run `plane_wave_3_test`and `make_video` tests respectively.
 
-`rf_dataset.hdf5` contains raw RF data obtained by ultrasound simulation of virtual scatters. The simulation was done using Field II program [[1-2]](#1).
+`./rf_dataset.hdf5` contains raw RF data obtained by ultrasound simulation of virtual scatters. The simulation was done using Field II program [[1-2]](#1).
 
-`image_dataset.hdf5` contains a single image reconstructed from `rf_dataset.hdf5`  by cartesian dynamic receive beamformer (`beamformer_cartesian.py`).
+`./image_dataset.hdf5` contains a single image reconstructed from `./rf_dataset.hdf5`  by cartesian dynamic receive beamformer (`beamformer_cartesian.py`).
 
 Along with the data mentioned above the datasets include additional information required for data processing. The detailed description can be found below.
+
+Moreover, we provide sample raw data array stored in `./sample_rf_data.csv`. This data is required to run the test `realtime_beamformer`.
+
+The datasets under  `./Picmus` folder contain **raw RF data** from PICMUS challenge [[3]](#3). It is required to run `low_ch_*` tests.
 
 # Structure of the datasets
 
@@ -60,7 +64,7 @@ Both of them use [hdf5](https://support.hdfgroup.org/HDF5/doc/H5.intro.html) hie
 | sim_params/scatters_data                                  | Spatial coordinates (x, y, z) <br> of virtual scatters       |
 
 # License
-These datasets (`rf_dataset.hdf5` and `image_dataset.hdf5`) are licensed under a [Creative Commons Attribution 4.0 International
+The datasets (`rf_dataset.hdf5` and `image_dataset.hdf5`) are licensed under a [Creative Commons Attribution 4.0 International
 License][cc-by].
 
 [![CC BY 4.0][cc-by-image]][cc-by]
@@ -73,5 +77,8 @@ License][cc-by].
 <a id="1">[1]</a> 
 J.A. Jensen: Field: A Program for Simulating Ultrasound Systems, Paper presented at the 10th Nordic-Baltic Conference on Biomedical Imaging Published in Medical & Biological Engineering & Computing, pp. 351-353, Volume 34, Supplement 1, Part 1, 1996.
 
-<a id="2">[1]</a> 
+<a id="2">[2]</a> 
 J.A. Jensen and N. B. Svendsen: Calculation of pressure fields from arbitrarily shaped, apodized, and excited ultrasound transducers, IEEE Trans. Ultrason., Ferroelec., Freq. Contr., 39, pp. 262-267, 1992.
+
+<a id="3">[3]</a> 
+Liebgott, Herve, et al. "Plane-wave imaging challenge in medical ultrasound." 2016 IEEE International ultrasonics symposium (IUS). IEEE, 2016.

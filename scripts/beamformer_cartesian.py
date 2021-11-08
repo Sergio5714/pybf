@@ -31,8 +31,9 @@ from pybf.pybf.delay_calc import convert_time_to_samples
 from pybf.pybf.apodization import calc_fov_receive_apodization
 from pybf.pybf.signal_processing import demodulate_decimate
 from pybf.pybf.signal_processing import interpolate_modulate
+from pybf.pybf.signal_processing import filter_band_pass
 from pybf.pybf.io_interfaces import ImageSaver
-from pybf.pybf.bf_cores import delay_and_sum
+from pybf.pybf.bf_cores import delay_and_sum_numba, delay_and_sum_numpy
 from pybf.scripts.visualize_image_dataset import visualize_image_dataset
 
 # Constants
@@ -50,6 +51,7 @@ def beamformer_cartesian(path_to_rf_dataset,
                          save_images_to_hdf5=True,
                          save_lri_to_hdf5=False,
                          save_visualized_images=False,
+                         show_images=False,
                          save_path=None,
                          frames_to_plot=None,
                          low_res_img_to_plot=None,
@@ -59,7 +61,8 @@ def beamformer_cartesian(path_to_rf_dataset,
                          alpha_fov_apod=ALPHA_FOV_APOD_ANGLE_DEFAULT,
                          active_elements=None,
                          frames_to_process=[],
-                         acqs_to_process=[]):
+                         acqs_to_process=[],
+                         bp_filter_params=None):
 
     # 1 Create DataLoader object
     print('Loading data...')
@@ -84,12 +87,12 @@ def beamformer_cartesian(path_to_rf_dataset,
 
     # 3 Precalculate delays
     print('Delays precalculation...')
-    delays = calc_propagation_delays(dl.tx_strategy,
-                                     dl.transducer.num_of_elements,
-                                     dl.transducer.elements_coords,
-                                     pixels_coords,
-                                     dl.transducer.speed_of_sound,
-                                     simulation_flag=dl.simulation_flag)
+    rx_delays, tx_delays = calc_propagation_delays(dl.tx_strategy,
+                                                   dl.transducer.num_of_elements,
+                                                   dl.transducer.elements_coords,
+                                                   pixels_coords,
+                                                   dl.transducer.speed_of_sound,
+                                                   simulation_flag=dl.simulation_flag)
 
     # Calculate final sampling rate for preprocessed data
     f_sampling_proc = dl.f_sampling / decimation_factor * interpolation_factor
@@ -101,10 +104,14 @@ def beamformer_cartesian(path_to_rf_dataset,
     if correction_time_shift is None:
         correction_time_shift = dl.hardware.correction_time_shift
 
-    delays_samples = convert_time_to_samples(delays, 
-                                             f_sampling_proc,
-                                             start_time,
-                                             correction_time_shift)
+    # Convert time delays into samples' indices
+    # Incorporate correction time shift only in rx delays
+    rx_delays_samples = convert_time_to_samples(rx_delays, 
+                                                f_sampling_proc,
+                                                start_time,
+                                                correction_time_shift)
+
+    tx_delays_samples = convert_time_to_samples(tx_delays, f_sampling_proc,0,0)
 
     # 4 Calculate Apodization
     print('Apodization precalculation...')
@@ -117,10 +124,19 @@ def beamformer_cartesian(path_to_rf_dataset,
     # Demodulate decimate
     def preprocess_data(rf_data, decim_factor, interp_factor):
 
-        rf_data_IQ = demodulate_decimate(rf_data, 
-                                        dl.f_sampling, 
-                                        dl.transducer.f_central_hz, 
-                                        decim_factor)
+        if bp_filter_params is not None:
+            rf_data_filt = filter_band_pass(rf_data,
+                                            dl.f_sampling, 
+                                            bp_filter_params[0], 
+                                            bp_filter_params[1],
+                                            bp_filter_params[2])
+        else:
+            rf_data_filt = rf_data
+
+        rf_data_IQ = demodulate_decimate(rf_data_filt, 
+                                         dl.f_sampling, 
+                                         dl.transducer.f_central_hz, 
+                                         decim_factor)
 
         rf_data_proc = interpolate_modulate(rf_data_IQ, 
                                             dl.f_sampling / decim_factor, 
@@ -151,7 +167,7 @@ def beamformer_cartesian(path_to_rf_dataset,
     # Check the frames_to_process list
     if frames_to_process is not None:
         if len(frames_to_process) is 0:
-            frames_to_process = [i for i in range(1, dl.num_of_frames + 1)]
+            frames_to_process = [i for i in range(dl.num_of_frames)]
     else:
         frames_to_process = []
 
@@ -159,7 +175,7 @@ def beamformer_cartesian(path_to_rf_dataset,
     # Check the acqs_to_process list
     if acqs_to_process is not None:
         if len(acqs_to_process) is 0:
-            acqs_to_process = [i for i in range(1, dl.num_of_acq_per_frame + 1)]
+            acqs_to_process = [i for i in range(dl.num_of_acq_per_frame)]
     else:
         acqs_to_process = []
 
@@ -169,6 +185,8 @@ def beamformer_cartesian(path_to_rf_dataset,
         
         # Iterate over acquisitions
         for i in acqs_to_process:
+
+            start_bf = time.time()
 
             # get RF data
             rf_data = dl.get_rf_data(j, i)
@@ -180,20 +198,24 @@ def beamformer_cartesian(path_to_rf_dataset,
 
             rf_data_proc_trans = np.transpose(rf_data_proc)
 
+            # Summ up Tx and RX delays
+            delays_samples = rx_delays_samples + tx_delays_samples[i, :]
+
             # Make delay and sum operation + apodization
-            das_out[i-1,:] = delay_and_sum(rf_data_proc_trans, 
-                                           delays_samples[i - 1:i, :, :], 
-                                           apod_weights=apod)
+            das_out[i,:] = delay_and_sum_numba(rf_data_proc_trans, 
+                                               delays_samples.reshape(1, delays_samples.shape[0], -1), 
+                                               apod_weights=apod)
 
         # Coherent compounding
-        das_out_compound = np.sum(das_out, axis = 0)
+        das_out_compound = np.sum(das_out[acqs_to_process, :], axis = 0)
 
         # Save images as I/Q data
         if save_images_to_hdf5:
             # Save low resolution images
             if save_lri_to_hdf5:
-                saver.save_low_res_images(das_out.reshape(-1, image_res[0], image_res[1]), j)
-            saver.save_high_res_image(das_out_compound.reshape(image_res[0], image_res[1]), j)
+                saver.save_low_res_images(das_out.reshape(-1, image_res[1], image_res[0]), j, 
+                                          low_res_imgs_indices = acqs_to_process)
+            saver.save_high_res_image(das_out_compound.reshape(image_res[1], image_res[0]), j)
     
         # Print progress
         # Cursor up one line
@@ -201,6 +223,7 @@ def beamformer_cartesian(path_to_rf_dataset,
         sys.stdout.write("\033[F")
         print('Frame: ', frame_counter, 
               'Progress: ', "{0:.2f}".format(frame_counter/len(frames_to_process) * 100), ' %')
+        print('Time per frame: %s seconds', time.time() - start_bf)
 
     # Print execution time
     print('Time of execution: %s seconds' % (time.time() - start_time))
@@ -222,6 +245,7 @@ def beamformer_cartesian(path_to_rf_dataset,
 
     visualize_image_dataset(save_path + '/' + 'image_dataset.hdf5',
                             save_visualized_images=save_visualized_images,
+                            show_images=show_images,
                             frames_to_plot=frames_to_plot,
                             low_res_img_to_plot=low_res_img_to_plot,
                             db_range=db_range)
@@ -355,6 +379,13 @@ if __name__ == '__main__':
         default=False,
         help='Flag to save visualized images.')
     parser.add_argument(
+        '--show_images',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=False,
+        help='Flag to save visualized images.')
+    parser.add_argument(
         '--save_path',
         type=str,
         default=' ',
@@ -394,6 +425,7 @@ if __name__ == '__main__':
                          save_lri_to_hdf5=FLAGS.save_lri_to_hdf5,
                          save_visualized_images=FLAGS.save_visualized_images,
                          save_path=FLAGS.save_path,
+                         show_images=FLAGS.show_images,
                          frames_to_plot=FLAGS.frames_to_plot,
                          low_res_img_to_plot=FLAGS.low_res_img_to_plot,
                          db_range=FLAGS.db_range,

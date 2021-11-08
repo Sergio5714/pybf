@@ -2,6 +2,7 @@
    Copyright (C) 2020 ETH Zurich. All rights reserved.
 
    Author: Sergei Vostrikov, ETH Zurich
+           Wolfgang Boettcher, ETH Zurich
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,8 +18,9 @@
 """
 
 import matplotlib
-matplotlib.use('TKAgg')
+# matplotlib.use('QT4Agg')
 from matplotlib import colors, cm, pyplot as plt
+from matplotlib.patches import Rectangle
 
 import plotly as py
 import plotly.graph_objects as go
@@ -31,21 +33,31 @@ import numpy as np
 PLOTLY_SCALE_FACTOR = 2
 
 # Log compression
-def log_compress(image, db_range):
+def log_compress(image, db_range, reference_max=None):
 
     db_range = abs(db_range)
 
+    image_temp = image.copy()
+
+    # If reference maximum value is specified
+    # truncate the data
+    if reference_max is not None:
+        image_temp[image_temp > reference_max] = reference_max
+
     # Calc max value
-    max_value = image.max()
+    if (reference_max is not None) and (reference_max > image_temp.max()):
+        max_value = reference_max
+    else:
+        max_value = image_temp.max()
 
     # Log scale transform
-    image_log = 20 * np.log10(image/max_value)
+    image_log = 20 * np.log10(image_temp/max_value)
 
     # Truncate
     image_log[image_log < (-db_range)] = -db_range
 
     print("BF Final dB range ({:2.1f},{:2.1f})".format(image_log.min(),
-                                                        image_log.max()))
+                                                       image_log.max()))
     return image_log
 
 # Plot one trace
@@ -118,10 +130,12 @@ def plot_image(img_data,
                image_x_range=None,
                image_z_range=None,
                db_range=None,
+               reference_max=None,
                colorscale='Greys',
                save_fig=False, 
                show=True,
-               path_to_save=None):
+               path_to_save=None,
+               latex_args=None):
 
     # Check path for to save images
     if path_to_save is None:
@@ -135,7 +149,9 @@ def plot_image(img_data,
 
     # Make log compression
     if db_range is not None:
-        data=log_compress(img_data, db_range)
+        data=log_compress(img_data, 
+                          db_range, 
+                          reference_max=reference_max)
         # Update title
         title = title + ' (dB scale)'
     else:
@@ -143,8 +159,15 @@ def plot_image(img_data,
 
     # Choose framework
     if framework is 'matplotlib':
+        if latex_args is not None:
+            from matplotlib import rc
+            rc('font',**{'family':'serif'})
+            rc('text', usetex=True)
 
-        fig, ax = plt.subplots(1, 1,figsize=(10,10))
+            plt.rcParams.update(latex_args)
+            fig, ax = plt.subplots(1, 1, figsize=latex_args['figure.figsize'])
+        else:
+            fig, ax = plt.subplots(1, 1)
 
         # Plot scatters
         if scatters_coords_xz is not None:
@@ -177,20 +200,25 @@ def plot_image(img_data,
 
         ax.set_xlabel("X, m")
         ax.set_ylabel("Z, m")
-        ax.set_title(title)
+        #ax.set_title(title)
 
         ax.invert_yaxis()
-        ax.legend()
+        #ax.legend()
 
         if show is True:
             plt.show()
 
         if save_fig is True:
-            fig.savefig(path_to_save + title + '.png', 
+            if latex_args is None:
+                fig.savefig(path_to_save + title + '.png', 
                         dpi=300, 
                         bbox_inches='tight')
+            else:
+                fig.savefig(path_to_save + title + '.pdf', bbox_inches='tight', dpi=600)
 
     elif framework is 'plotly':
+
+        ax = None
 
         # Create plot
         if (image_x_range is not None) and (image_z_range is not None):
@@ -201,6 +229,8 @@ def plot_image(img_data,
 
             fig = go.Figure(data=go.Heatmap(
                             z=data,
+                            zmin=data.min(), 
+                            zmax=0,
                             x=np.unique(x_coords),
                             y=np.unique(z_coords),
                             hoverongaps = False,
@@ -210,6 +240,8 @@ def plot_image(img_data,
 
             fig = go.Figure(data=go.Heatmap(
                             z=data,
+                            zmin=data.min(), 
+                            zmax=0,
                             hoverongaps = False,
                             colorscale=colorscale))        
 
@@ -257,4 +289,92 @@ def plot_image(img_data,
 
         if save_fig is True:
             fig.write_image(path_to_save + title + '.png', scale = PLOTLY_SCALE_FACTOR)
-    return
+    return fig, ax
+
+class LivePlot:
+    def __init__(self,
+                 data_shape,
+                 scatters_coords_xz=None,
+                 elements_coords_xz=None,
+                 title=None,
+                 image_x_range=None,
+                 image_z_range=None,
+                 db_range=40,
+                 colorscale='Greys',
+                 save_fig=False):
+
+        self.data_shape = data_shape
+
+        # Set title
+        if title is None:
+            self.title='Image'
+        else:
+            self.title=title
+
+        # Make log compression
+        self.db_range = db_range
+        # Update title
+        self.title = self.title + ' (dB scale)'
+
+        self.scatters_coords_xz = scatters_coords_xz
+        self.elements_coords_xz = elements_coords_xz
+
+        self.image_x_range = image_x_range
+        self.image_z_range = image_z_range
+
+        self._fig, self._ax = plt.subplots(1, 1,figsize=(10,10))
+
+        self._plot_initial_figure()
+
+    # Plot scatters coordinates, transducer elements and sample data
+    def _plot_initial_figure(self):
+        # Plot scatters
+        if self.scatters_coords_xz is not None:
+            self._scatter_line = self._ax.scatter(self.scatters_coords_xz[0,:], 
+                                                  self.scatters_coords_xz[1,:], 
+                                                  color = 'red', 
+                                                  s=5, 
+                                                  label='scatters')
+
+        # Plot transducer elements
+        if self.elements_coords_xz is not None:
+            self._elements_line = self._ax.scatter(self.elements_coords_xz[0,:], 
+                                                   self.elements_coords_xz[1,:], 
+                                                   color = 'green', 
+                                                   marker="v", 
+                                                   s=80,
+                                                   label='elements')
+
+        # Plot main image
+        if (self.image_x_range is not None) and (self.image_z_range is not None):
+
+            self._image_obj = self._ax.imshow(np.zeros(self.data_shape), 
+                                              cmap=cm.gray, 
+                                              origin="lower",
+                                              aspect="auto",
+                                              extent=self.image_x_range + self.image_z_range)
+        else:
+            self._image_obj = self._ax.imshow(np.zeros(self.data_shape), 
+                                              cmap=cm.gray, 
+                                              origin="lower",
+                                              aspect="auto")
+
+        self._image_obj.set_clim(-self.db_range,0)
+        self._cbar = self._fig.colorbar(self._image_obj, ax=self._ax)
+
+        self._ax.set_xlabel("X, m")
+        self._ax.set_ylabel("Z, m")
+        self._ax.set_title(self.title)
+
+        self._ax.invert_yaxis()
+        self._ax.legend()
+
+    def update_the_figure(self, img_data):
+
+        data_db = log_compress(img_data, self.db_range)
+
+        self._image_obj.set_data(data_db)
+
+        # Plot the figure with updated data
+        plt.draw()
+        plt.pause(.001)

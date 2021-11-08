@@ -93,6 +93,7 @@ def visualize_image_dataset(path_to_img_dataset,
                        scatters_coords_xz=scs_coords_xz,
                        framework='plotly',
                        save_fig=save_visualized_images,
+                       show=show_images,
                        path_to_save=save_path)
         
         # Plot High Resolution Image
@@ -109,6 +110,7 @@ def visualize_image_dataset(path_to_img_dataset,
                    scatters_coords_xz=scs_coords_xz,
                    framework='plotly',
                    save_fig=save_visualized_images,
+                   show=show_images,
                    path_to_save=save_path)
 
     # Close the file with beamformed images

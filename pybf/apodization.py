@@ -24,14 +24,15 @@ from numba import jit
 def calc_fov_receive_apodization(num_of_elements, 
                                  elements_coords, 
                                  pixels_coords,
-                                 alpha_fov_degree = 45):
+                                 alpha_fov_degree = 45,
+                                 channel_reduction = None):
 
     n_elements = elements_coords.shape[1]
     n_pixels = pixels_coords.shape[1]
     elements_x = elements_coords[0,:]
 
     # for each FP, compute the apodization weight for each element...
-    apod_weights = np.zeros((n_pixels, n_elements), np.double)
+    apod_weights = np.zeros((n_pixels, n_elements), dtype=np.float32)
 
     # Precompute hanning windows with size from 1 to  num_of_elements
     hann_win = []
@@ -52,4 +53,18 @@ def calc_fov_receive_apodization(num_of_elements,
         active_elements = np.logical_and(elements_x >= x_aperture_max[n], elements_x <= x_aperture_min[n])
         apod_weights[n, np.where(active_elements)] = hann_win[np.count_nonzero(active_elements)]
 
-    return  apod_weights
+    # Mask out certain channels
+    if (channel_reduction is not None):
+        channel_mask = np.zeros((n_elements), dtype=np.float32)
+
+        # channel_mask[0] = 1
+        # channel_mask[-1] = 1
+        # channel_mask[::channel_reduction] = 1
+        ch_nr = apod_weights.shape[1]
+        start_i = np.ceil((ch_nr - channel_reduction)/2)
+        stop_i = start_i + channel_reduction
+        channel_mask[int(start_i):int(stop_i)] = 1
+
+        apod_weights = np.multiply(apod_weights, channel_mask)
+
+    return  apod_weights.astype(np.float32)

@@ -45,7 +45,7 @@ def calc_propagation_delays(tx_strategy,
     if tx_strat_name[0] == 'PW':
 
         num_of_pw = int(tx_strat_name[1])
-        max_angle = int(tx_strat_name[2])
+        max_angle = float(tx_strat_name[2])
 
         # Print info
         print('TX strategy: plane waves')
@@ -83,17 +83,19 @@ def calc_propagation_delays(tx_strategy,
         n_points = tx_delays.shape[1]
         n_elements = rx_delays.shape[0]
 
-        delays = np.zeros((n_angles, n_elements, n_points))
+        # delays = np.zeros((n_angles, n_elements, n_points))
 
-        # Combine two delays together
-        # 1 Expand rx_delays array, adding 3rd dimension (of size n_angles)
-        # 2 Reshape tx_delays and sum it with expanded rx_delays array
-        delays = np.tile(rx_delays, (n_angles, 1, 1))
-        delays = delays + tx_delays.reshape(n_angles, 1, n_points)
+        # # Combine two delays together
+        # # 1 Expand rx_delays array, adding 3rd dimension (of size n_angles)
+        # # 2 Reshape tx_delays and sum it with expanded rx_delays array
+        # delays = np.tile(rx_delays, (n_angles, 1, 1))
+        # delays = delays + tx_delays.reshape(n_angles, 1, n_points)
 
 
-    # Output shape of delays (n_modes x n_elements x n_points)
-    return delays
+    # Output shape of delays
+    # rx_delays: (n_elements x n_points)
+    # tx_delays: (n_angles x n_points)
+    return rx_delays.astype(np.float32), tx_delays.astype(np.float32)
 
 # Calculates distance from point to plane wave front
 # Function is vectorized. 
@@ -183,5 +185,5 @@ def convert_time_to_samples(array_t, f_sampling, start_offset_s, correction_time
     # 3 Multiply by sampling rate
     array_samples = np.rint(np.multiply(array_t - start_offset_s + correction_time_s, f_sampling))
 
-    return array_samples.astype(np.int)
+    return array_samples.astype(np.int32)
 

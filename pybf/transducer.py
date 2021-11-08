@@ -85,7 +85,7 @@ class Transducer:
 
         self._active_elements = np.array(active_elements, dtype=np.int)
 
-        print(active_elements)
+        print('Transducer: number of active elements = ', len(active_elements))
 
         # Calculate X, Y coordinates of transducer elements
         self._calc_elements_coords()
@@ -95,9 +95,6 @@ class Transducer:
 
         # Update coordinates of activated elements
         self._elements_coords = self._elements_coords[:, self._active_elements]
-
-        print(self._num_of_elements)
-        print(self.elements_coords.shape)
 
         return
 

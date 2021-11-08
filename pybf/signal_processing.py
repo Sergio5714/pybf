@@ -48,7 +48,7 @@ def demodulate_decimate(data, f_sampling, f_carrier, decimation_factor, koff = 0
 # Each row stands for channel
 def interpolate_modulate(data_IQ, f_sampling, f_carrier, interpolation_factor, toff = 0):
 
-    # Calculate th sampling frequency after interpolation
+    # Calculate the sampling frequency after interpolation
     f_interpolated = f_sampling * interpolation_factor
 
     # Interpolate the data using Fourier method along the columns
@@ -64,3 +64,27 @@ def interpolate_modulate(data_IQ, f_sampling, f_carrier, interpolation_factor, t
     data_out = data_IQ_interp * np.tile(carrier.reshape(1, -1), (data_IQ_interp.shape[0], 1))
 
     return data_out
+
+# Apply Hilbert transform and then interpolate the data
+def  hilbert_interpolate(data_RF, f_sampling, interpolation_factor):
+
+    # Hilbert transform
+    data_hilbert = ss.hilbert(data_RF, axis=-1)
+
+    # Interpolate the data using Fourier method along the columns
+    data_hilbert_interp = ss.resample(data_hilbert, data_hilbert.shape[1] * interpolation_factor, axis=-1)
+
+    return data_hilbert_interp
+
+# Bandpass filter
+# transition width is the same for both low and high cutoff frequencies
+def filter_band_pass(data, f_sampling, f_low_cutoff, f_high_cutoff, trans_width, n_taps = 101):
+    # Make filter
+    b = ss.remez(n_taps, 
+                [0, f_low_cutoff - trans_width, f_low_cutoff, f_high_cutoff, f_high_cutoff + trans_width, f_sampling/2],
+                [0, 1,  0], 
+                Hz=f_sampling, 
+                maxiter=2500)
+    a = 1
+
+    return ss.filtfilt(b, a, data)

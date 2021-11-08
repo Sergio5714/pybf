@@ -35,7 +35,7 @@ if __name__ == '__main__':
     decimation_factor = 1
     interpolation_factor = 10
 
-    img_res = [500, 500]
+    img_res = [400, 600]
     image_x_range = [-0.022, 0.022]
     image_z_range = [0.0014784, 0.04]
     # Save images
@@ -58,8 +58,8 @@ if __name__ == '__main__':
 
     # Plot only first frame (HRI + LRI)
     save_visualized_images = True
-    frames_to_plot = [1]
-    low_res_img_to_plot = [1, 2, 3]
+    frames_to_plot = [0]
+    low_res_img_to_plot = [0, 1, 2]
     db_range = 50
 
     # Reconstruct the image and visualize
