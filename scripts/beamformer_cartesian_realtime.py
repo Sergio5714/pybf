@@ -154,7 +154,10 @@ class BFCartesianRealTime():
         return rf_data_proc
 
         # Beamform the data using selected BF-core
-    def beamform(self, rf_data, numba_active=False):
+    def beamform(self, rf_data, backend='numpy'):
+
+        if backend is "cuda":
+            from pybf.pybf.bf_cores_cuda import delay_and_sum_cuda
 
         print('Beamforming...')
         print (' ')
@@ -162,7 +165,7 @@ class BFCartesianRealTime():
 
         acqs_to_process = [x for x in range(self._tx_delays_samples.shape[0])]
 
-        # Allocate the data
+        # Allocate the data (not needed)
         das_out = np.zeros((len(acqs_to_process), self._pixels_coords.shape[1]), dtype = np.complex128)
 
         # Check length
@@ -187,10 +190,18 @@ class BFCartesianRealTime():
             delays_samples = self._rx_delays_samples + self._tx_delays_samples[i, :]
 
             # Make delay and sum operation + apodization
-            if numba_active is True:
+            if backend is 'numba':
                 das_out[i,:] = delay_and_sum_numba(rf_data_proc_trans, 
                                                    delays_samples.reshape(1, delays_samples.shape[0], -1), 
                                                    apod_weights=self._apod)
+
+            # Make delay and sum operation + apodization
+            if backend is 'cuda':
+                das_out[i,:] = delay_and_sum_cuda (rf_data_proc_trans.astype(np.complex64), 
+                                                   delays_samples.reshape(1, delays_samples.shape[0], -1).astype(np.float32), 
+                                                   apod_weights=self._apod.astype(np.float32),
+                                                   n_groups=2)
+            # If backend is "numpy" or the others
             else:                                    
                 das_out[i,:] = delay_and_sum_numpy(rf_data_proc_trans, 
                                                    delays_samples.reshape(1, delays_samples.shape[0], -1), 
